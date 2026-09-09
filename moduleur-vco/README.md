@@ -32,6 +32,7 @@ uv run --python /Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framewo
 - `--hole-diameter`: Drill diameter for mousebites in mm (default: `0.5`)
 - `--hole-spacing`: Center-to-center pitch of mousebite holes in mm (default: `0.75`)
 - `--mousebite-offset`: Hole offset into tab in mm (default: `0.25`)
+- `--tolerance`: Source extraction tolerance in mm to capture artwork extending beyond board edges (default: auto-detected)
 
 ## Generated Output
 

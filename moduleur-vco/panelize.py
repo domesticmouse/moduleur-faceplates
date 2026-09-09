@@ -70,6 +70,7 @@ def panelize(
     hole_diameter_mm: float = 0.5,
     hole_spacing_mm: float = 0.75,
     mousebite_offset_mm: float = 0.25,
+    tolerance_mm: float | None = None,
 ) -> None:
     check_environment()
 
@@ -90,6 +91,36 @@ def panelize(
     output_pcb.parent.mkdir(parents=True, exist_ok=True)
 
     print(f"Loading input PCB: {input_pcb}")
+
+    # Inspect input board to ensure artwork extending outside Edge.Cuts is fully captured
+    source_board = pcbnew.LoadBoard(str(input_pcb))
+    edge_bbox = source_board.GetBoardEdgesBoundingBox()
+    all_drawings = list(source_board.GetDrawings())
+
+    if tolerance_mm is None:
+        if all_drawings:
+            min_x = min(d.GetBoundingBox().GetX() for d in all_drawings)
+            min_y = min(d.GetBoundingBox().GetY() for d in all_drawings)
+            max_x = max(d.GetBoundingBox().GetX() + d.GetBoundingBox().GetWidth() for d in all_drawings)
+            max_y = max(d.GetBoundingBox().GetY() + d.GetBoundingBox().GetHeight() for d in all_drawings)
+
+            overflow = max(
+                0,
+                edge_bbox.GetX() - min_x,
+                edge_bbox.GetY() - min_y,
+                max_x - (edge_bbox.GetX() + edge_bbox.GetWidth()),
+                max_y - (edge_bbox.GetY() + edge_bbox.GetHeight()),
+            )
+            # Add a 10 mm buffer to ensure all graphical elements fit fully inside the source area
+            tolerance_nm = overflow + int(10 * mm) if overflow > 0 else 0
+        else:
+            tolerance_nm = 0
+    else:
+        tolerance_nm = int(tolerance_mm * mm)
+
+    if tolerance_nm > 0:
+        print(f"Background artwork extends beyond Edge.Cuts; expanding source extraction tolerance by {tolerance_nm / 1e6:.2f} mm")
+
     panel = kp.Panel(str(output_pcb))
 
     # Append input board aligned to TopLeft (0, 0)
@@ -97,6 +128,7 @@ def panelize(
         str(input_pcb),
         pcbnew.VECTOR2I(0, 0),
         origin=kp.Origin.TopLeft,
+        tolerance=tolerance_nm,
     )
 
     # Detect sub-boards from substrate polygons
@@ -228,6 +260,12 @@ def main() -> None:
         default=0.25,
         help="Mousebite offset into tab in mm (default: 0.25)",
     )
+    parser.add_argument(
+        "--tolerance",
+        type=float,
+        default=None,
+        help="Source extraction tolerance in mm (default: auto-detected from artwork bounds)",
+    )
 
     args = parser.parse_args()
     panelize(
@@ -238,6 +276,7 @@ def main() -> None:
         hole_diameter_mm=args.hole_diameter,
         hole_spacing_mm=args.hole_spacing,
         mousebite_offset_mm=args.mousebite_offset,
+        tolerance_mm=args.tolerance,
     )
 
 
