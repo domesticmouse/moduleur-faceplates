@@ -141,8 +141,11 @@ def panelize(
             )
             panel.appendSubstrate(tab_poly)
 
-            # Break-off cut lines along each board edge
-            cuts.append(LineString([(x1 * mm, y_top * mm), (x1 * mm, y_bot * mm)]))
+            # Break-off cut lines along each board edge.
+            # KiKit offsets cuts to the "left" of the line direction vector:
+            # - For the left edge (x1), orienting bottom-to-top (y_bot -> y_top) offsets right (+X) into the tab.
+            # - For the right edge (x2), orienting top-to-bottom (y_top -> y_bot) offsets left (-X) into the tab.
+            cuts.append(LineString([(x1 * mm, y_bot * mm), (x1 * mm, y_top * mm)]))
             cuts.append(LineString([(x2 * mm, y_top * mm), (x2 * mm, y_bot * mm)]))
             print(f"  Seam {seam_idx} tab at Y={y:.1f} mm (Y range: [{y_top:.1f}, {y_bot:.1f}] mm)")
 
