@@ -27,15 +27,20 @@ from pathlib import Path
 def check_environment() -> None:
     """Ensure pcbnew can be imported, locating KiCad's bundled module if needed."""
     try:
-        import pcbnew  # noqa: F401
+        import pcbnew
+
         return
     except ImportError:
         pass
 
     # Candidate paths for KiCad's Python site-packages on macOS and Linux
     candidates = [
-        Path("/Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/Current/lib/python3.9/site-packages"),
-        Path("/Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/3.9/lib/python3.9/site-packages"),
+        Path(
+            "/Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/Current/lib/python3.9/site-packages"
+        ),
+        Path(
+            "/Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/3.9/lib/python3.9/site-packages"
+        ),
         Path("/Applications/KiCad/KiCad.app/Contents/SharedSupport/python"),
         Path("/usr/lib/python3/dist-packages"),
     ]
@@ -45,6 +50,7 @@ def check_environment() -> None:
             sys.path.insert(0, str(candidate))
             try:
                 import pcbnew  # noqa: F401
+
                 return
             except ImportError:
                 continue
@@ -101,8 +107,14 @@ def panelize(
         if all_drawings:
             min_x = min(d.GetBoundingBox().GetX() for d in all_drawings)
             min_y = min(d.GetBoundingBox().GetY() for d in all_drawings)
-            max_x = max(d.GetBoundingBox().GetX() + d.GetBoundingBox().GetWidth() for d in all_drawings)
-            max_y = max(d.GetBoundingBox().GetY() + d.GetBoundingBox().GetHeight() for d in all_drawings)
+            max_x = max(
+                d.GetBoundingBox().GetX() + d.GetBoundingBox().GetWidth()
+                for d in all_drawings
+            )
+            max_y = max(
+                d.GetBoundingBox().GetY() + d.GetBoundingBox().GetHeight()
+                for d in all_drawings
+            )
 
             overflow = max(
                 0,
@@ -119,7 +131,9 @@ def panelize(
         tolerance_nm = int(tolerance_mm * mm)
 
     if tolerance_nm > 0:
-        print(f"Background artwork extends beyond Edge.Cuts; expanding source extraction tolerance by {tolerance_nm / 1e6:.2f} mm")
+        print(
+            f"Background artwork extends beyond Edge.Cuts; expanding source extraction tolerance by {tolerance_nm / 1e6:.2f} mm"
+        )
 
     panel = kp.Panel(str(output_pcb))
 
@@ -141,7 +155,9 @@ def panelize(
         b = [round(v / 1e6, 2) for v in g.bounds]
         w = round(b[2] - b[0], 2)
         h = round(b[3] - b[1], 2)
-        print(f"  Board {idx + 1}: X=[{b[0]}, {b[2]}] mm ({w} mm wide), Y=[{b[1]}, {b[3]}] mm ({h} mm high)")
+        print(
+            f"  Board {idx + 1}: X=[{b[0]}, {b[2]}] mm ({w} mm wide), Y=[{b[1]}, {b[3]}] mm ({h} mm high)"
+        )
 
     if len(geoms) < 2:
         print("Warning: Fewer than 2 board outlines found. No seams to join.")
@@ -149,16 +165,20 @@ def panelize(
     # Identify seams between adjacent boards
     seams: list[tuple[float, float]] = []
     for i in range(len(geoms) - 1):
-        x_left = geoms[i].bounds[2] / 1e6   # right edge of left board (mm)
+        x_left = geoms[i].bounds[2] / 1e6  # right edge of left board (mm)
         x_right = geoms[i + 1].bounds[0] / 1e6  # left edge of right board (mm)
         gap = round(x_right - x_left, 2)
         seams.append((x_left, x_right))
-        print(f"Seam {i + 1}: between Board {i + 1} (X={x_left:.2f}) and Board {i + 2} (X={x_right:.2f}), gap={gap:.2f} mm")
+        print(
+            f"Seam {i + 1}: between Board {i + 1} (X={x_left:.2f}) and Board {i + 2} (X={x_right:.2f}), gap={gap:.2f} mm"
+        )
 
     overlap_mm = 0.5  # Slight overlap into boards ensures contiguous union
     cuts: list[LineString] = []
 
-    print(f"\nAdding {len(tab_y_positions_mm)} tabs per seam (width = {tab_width_mm} mm):")
+    print(
+        f"\nAdding {len(tab_y_positions_mm)} tabs per seam (width = {tab_width_mm} mm):"
+    )
     for seam_idx, (x1, x2) in enumerate(seams, start=1):
         for y in tab_y_positions_mm:
             y_top = y - tab_width_mm / 2.0
@@ -179,7 +199,9 @@ def panelize(
             # - For the right edge (x2), orienting top-to-bottom (y_top -> y_bot) offsets left (-X) into the tab.
             cuts.append(LineString([(x1 * mm, y_bot * mm), (x1 * mm, y_top * mm)]))
             cuts.append(LineString([(x2 * mm, y_top * mm), (x2 * mm, y_bot * mm)]))
-            print(f"  Seam {seam_idx} tab at Y={y:.1f} mm (Y range: [{y_top:.1f}, {y_bot:.1f}] mm)")
+            print(
+                f"  Seam {seam_idx} tab at Y={y:.1f} mm (Y range: [{y_top:.1f}, {y_bot:.1f}] mm)"
+            )
 
     print(f"\nRendering mousebites for {len(cuts)} cut edges:")
     print(f"  Drill diameter: {hole_diameter_mm} mm")
@@ -206,7 +228,9 @@ def panelize(
 
     print("\nPanel validation:")
     print(f"  Substrate is single unified piece: {is_single}")
-    print(f"  Panel dimensions: {bounds[2] - bounds[0]:.2f} mm x {bounds[3] - bounds[1]:.2f} mm")
+    print(
+        f"  Panel dimensions: {bounds[2] - bounds[0]:.2f} mm x {bounds[3] - bounds[1]:.2f} mm"
+    )
     print(f"  Mousebite drill holes (footprints): {num_fps}")
 
     # Remove any transient lock file left behind by pcbnew.LoadBoard
