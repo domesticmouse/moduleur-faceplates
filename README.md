@@ -20,18 +20,18 @@ Moduleur is an open-source, fully analog Eurorack modular synthesizer designed t
 The faceplates are organized into two unified 3U Eurorack panels. Each panel is **48HP** wide (~252.5–252.9 mm × 128.5 mm) and consists of **four 12HP faceplates** arranged side-by-side sharing continuous front artwork:
 
 ### 1. VCO Panel (`VCO/`)
-Houses the primary audio generation, mixing, and filtering modules:
-- **VCO 1** (12HP)
-- **VCO 2** (12HP)
-- **Sidechain Mixer** (12HP)
-- **VCF (Filter)** (12HP)
+Houses the primary audio generation, mixing, and filtering modules (in order, left to right):
+1. **VCO** (12HP)
+2. **VCO** (12HP)
+3. **Mixer and Sidechain** (12HP)
+4. **VCF** (12HP)
 
 ### 2. VCA Panel (`VCA/`)
-Houses the modulation, control, dynamics, and output section:
-- **Brain** (Digital Control & Interface, 12HP)
-- **Envelope / VCA** (Dual Envelope & Amplification, 12HP)
-- **Crush / LFO / Output** (Bitcrusher, LFO, and Output Stage, 12HP)
-- **Utility / Aux** (12HP)
+Houses the modulation, control, utility, and brain modules (in order, left to right):
+1. **VCA and EG** (12HP)
+2. **VCA and EG** (12HP)
+3. **Utility** (12HP)
+4. **Brain** (12HP)
 
 ### Directory Contents
 For each panel directory (`VCO/` and `VCA/`):
