@@ -1,5 +1,7 @@
 # Moduleur Faceplates
 
+![VCO Panel](VCO_panel.png)
+
 Eurorack PCB faceplates and automated panelization tooling for the **[Moduleur](https://github.com/shmoergh/moduleur)** modular synthesizer.
 
 ---
