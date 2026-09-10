@@ -20,14 +20,15 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import sys
+from dataclasses import dataclass, field
 from pathlib import Path
+import sys
 
 
 def check_environment() -> None:
     """Ensure pcbnew can be imported, locating KiCad's bundled module if needed."""
     try:
-        import pcbnew
+        import pcbnew  # noqa: F401
 
         return
     except ImportError:
@@ -68,84 +69,81 @@ def check_environment() -> None:
     sys.exit(1)
 
 
-def panelize(
-    input_pcb: Path,
-    output_pcb: Path,
-    tab_width_mm: float = 5.0,
-    tab_y_positions_mm: list[float] | None = None,
-    hole_diameter_mm: float = 0.5,
-    hole_spacing_mm: float = 0.75,
-    mousebite_offset_mm: float = 0.25,
-    tolerance_mm: float | None = None,
-) -> None:
-    check_environment()
+# Ensure KiCad environment is ready before importing pcbnew or kikit
+check_environment()
 
-    import pcbnew
-    from kikit import panelize as kp
-    from kikit.common import Layer, collectEdges
-    from kikit.substrate import Substrate
-    from kikit.units import mm
-    from shapely.geometry import LineString, box
+import pcbnew  # noqa: E402
+from kikit import panelize as kp  # noqa: E402
+from kikit.common import Layer, collectEdges  # noqa: E402
+from kikit.substrate import Substrate  # noqa: E402
+from kikit.units import mm  # noqa: E402
+from shapely.geometry import LineString, box  # noqa: E402
 
-    if tab_y_positions_mm is None:
-        # Default clear vertical positions: ~26%, ~49%, ~72% height (128.5 mm total)
-        # Clear of Eurorack mounting slots and potentiometer/jack holes
-        tab_y_positions_mm = [34.0, 62.5, 92.0]
 
-    input_pcb = input_pcb.resolve()
-    output_pcb = output_pcb.resolve()
+@dataclass
+class PanelConfig:
+    """Configuration options for panel generation and mousebites."""
+
+    tab_width_mm: float = 5.0
+    tab_y_positions_mm: list[float] = field(
+        default_factory=lambda: [34.0, 62.5, 92.0]
+    )
+    hole_diameter_mm: float = 0.5
+    hole_spacing_mm: float = 0.75
+    mousebite_offset_mm: float = 0.25
+    tolerance_mm: float | None = None
+
+
+def compute_artwork_tolerance(
+    board: pcbnew.BOARD, default_buffer_mm: float = 10.0
+) -> int:
+    """Calculate the tolerance in nanometers to capture artwork extending beyond Edge.Cuts."""
+    edge_bbox = board.GetBoardEdgesBoundingBox()
+    all_drawings = list(board.GetDrawings())
+    if not all_drawings:
+        return 0
+
+    min_x = min(d.GetBoundingBox().GetX() for d in all_drawings)
+    min_y = min(d.GetBoundingBox().GetY() for d in all_drawings)
+    max_x = max(
+        d.GetBoundingBox().GetX() + d.GetBoundingBox().GetWidth()
+        for d in all_drawings
+    )
+    max_y = max(
+        d.GetBoundingBox().GetY() + d.GetBoundingBox().GetHeight()
+        for d in all_drawings
+    )
+
+    overflow = max(
+        0,
+        edge_bbox.GetX() - min_x,
+        edge_bbox.GetY() - min_y,
+        max_x - (edge_bbox.GetX() + edge_bbox.GetWidth()),
+        max_y - (edge_bbox.GetY() + edge_bbox.GetHeight()),
+    )
+    if overflow > 0:
+        return overflow + int(default_buffer_mm * mm)
+    return 0
+
+
+def init_panel(input_pcb: Path, output_pcb: Path, tolerance_nm: int) -> kp.Panel:
+    """Initialize a KiKit Panel and append the input board at TopLeft (0, 0)."""
     output_pcb.parent.mkdir(parents=True, exist_ok=True)
-
-    print(f"Loading input PCB: {input_pcb}")
-
-    # Inspect input board to ensure artwork extending outside Edge.Cuts is fully captured
-    source_board = pcbnew.LoadBoard(str(input_pcb))
-    edge_bbox = source_board.GetBoardEdgesBoundingBox()
-    all_drawings = list(source_board.GetDrawings())
-
-    if tolerance_mm is None:
-        if all_drawings:
-            min_x = min(d.GetBoundingBox().GetX() for d in all_drawings)
-            min_y = min(d.GetBoundingBox().GetY() for d in all_drawings)
-            max_x = max(
-                d.GetBoundingBox().GetX() + d.GetBoundingBox().GetWidth()
-                for d in all_drawings
-            )
-            max_y = max(
-                d.GetBoundingBox().GetY() + d.GetBoundingBox().GetHeight()
-                for d in all_drawings
-            )
-
-            overflow = max(
-                0,
-                edge_bbox.GetX() - min_x,
-                edge_bbox.GetY() - min_y,
-                max_x - (edge_bbox.GetX() + edge_bbox.GetWidth()),
-                max_y - (edge_bbox.GetY() + edge_bbox.GetHeight()),
-            )
-            # Add a 10 mm buffer to ensure all graphical elements fit fully inside the source area
-            tolerance_nm = overflow + int(10 * mm) if overflow > 0 else 0
-        else:
-            tolerance_nm = 0
-    else:
-        tolerance_nm = int(tolerance_mm * mm)
-
-    if tolerance_nm > 0:
-        print(
-            f"Background artwork extends beyond Edge.Cuts; expanding source extraction tolerance by {tolerance_nm / 1e6:.2f} mm"
-        )
-
     panel = kp.Panel(str(output_pcb))
-
-    # Append input board aligned to TopLeft (0, 0)
     panel.appendBoard(
         str(input_pcb),
         pcbnew.VECTOR2I(0, 0),
         origin=kp.Origin.TopLeft,
         tolerance=tolerance_nm,
     )
+    return panel
 
-    # Detect sub-boards from substrate polygons
+
+def detect_seams(panel: kp.Panel) -> list[tuple[float, float]]:
+    """Detect adjacent sub-board outlines and calculate seam coordinates in mm.
+
+    Returns a list of (x_left_edge, x_right_edge) tuples for adjacent boards.
+    """
     geoms = sorted(
         panel.boardSubstrate.substrates.geoms,
         key=lambda g: g.bounds[0],  # sort by minx
@@ -160,9 +158,8 @@ def panelize(
         )
 
     if len(geoms) < 2:
-        print("Warning: Fewer than 2 board outlines found. No seams to join.")
+        return []
 
-    # Identify seams between adjacent boards
     seams: list[tuple[float, float]] = []
     for i in range(len(geoms) - 1):
         x_left = geoms[i].bounds[2] / 1e6  # right edge of left board (mm)
@@ -172,17 +169,25 @@ def panelize(
         print(
             f"Seam {i + 1}: between Board {i + 1} (X={x_left:.2f}) and Board {i + 2} (X={x_right:.2f}), gap={gap:.2f} mm"
         )
+    return seams
 
-    overlap_mm = 0.5  # Slight overlap into boards ensures contiguous union
+
+def add_mousebite_tabs(
+    panel: kp.Panel,
+    seams: list[tuple[float, float]],
+    config: PanelConfig,
+    overlap_mm: float = 0.5,
+) -> None:
+    """Add substrate bridge tabs and perforate edges with mousebites."""
     cuts: list[LineString] = []
 
     print(
-        f"\nAdding {len(tab_y_positions_mm)} tabs per seam (width = {tab_width_mm} mm):"
+        f"\nAdding {len(config.tab_y_positions_mm)} tabs per seam (width = {config.tab_width_mm} mm):"
     )
     for seam_idx, (x1, x2) in enumerate(seams, start=1):
-        for y in tab_y_positions_mm:
-            y_top = y - tab_width_mm / 2.0
-            y_bot = y + tab_width_mm / 2.0
+        for y in config.tab_y_positions_mm:
+            y_top = y - config.tab_width_mm / 2.0
+            y_bot = y + config.tab_width_mm / 2.0
 
             # Tab substrate bridging the gap
             tab_poly = box(
@@ -204,22 +209,21 @@ def panelize(
             )
 
     print(f"\nRendering mousebites for {len(cuts)} cut edges:")
-    print(f"  Drill diameter: {hole_diameter_mm} mm")
-    print(f"  Drill spacing:  {hole_spacing_mm} mm")
-    print(f"  Offset:         {mousebite_offset_mm} mm")
+    print(f"  Drill diameter: {config.hole_diameter_mm} mm")
+    print(f"  Drill spacing:  {config.hole_spacing_mm} mm")
+    print(f"  Offset:         {config.mousebite_offset_mm} mm")
 
     panel.makeMouseBites(
         cuts,
-        diameter=hole_diameter_mm * mm,
-        spacing=hole_spacing_mm * mm,
-        offset=mousebite_offset_mm * mm,
+        diameter=config.hole_diameter_mm * mm,
+        spacing=config.hole_spacing_mm * mm,
+        offset=config.mousebite_offset_mm * mm,
     )
 
-    print(f"\nSaving panel to: {output_pcb}")
-    panel.save(reconstructArcs=True)
 
-    # Validate output panel substrate
-    saved_board = pcbnew.LoadBoard(str(output_pcb))
+def validate_panel(panel_path: Path) -> bool:
+    """Validate that the generated panel substrate is a single contiguous piece."""
+    saved_board = pcbnew.LoadBoard(str(panel_path))
     edges = collectEdges(saved_board, Layer.Edge_Cuts)
     sub = Substrate(edges)
     is_single = sub.isSinglePiece()
@@ -232,11 +236,52 @@ def panelize(
         f"  Panel dimensions: {bounds[2] - bounds[0]:.2f} mm x {bounds[3] - bounds[1]:.2f} mm"
     )
     print(f"  Mousebite drill holes (footprints): {num_fps}")
+    return is_single
 
-    # Remove any transient lock file left behind by pcbnew.LoadBoard
-    lck_file = output_pcb.parent / f"~{output_pcb.stem}.kicad_pro.lck"
+
+def cleanup_lockfile(board_path: Path) -> None:
+    """Remove any transient lock file left behind by pcbnew.LoadBoard."""
+    lck_file = board_path.parent / f"~{board_path.stem}.kicad_pro.lck"
     if lck_file.is_file():
         lck_file.unlink(missing_ok=True)
+
+
+def panelize(
+    input_pcb: Path,
+    output_pcb: Path,
+    config: PanelConfig | None = None,
+) -> None:
+    """Panelize a multi-board PCB layout into a unified panel joined by mousebites."""
+    config = config or PanelConfig()
+    input_pcb = input_pcb.resolve()
+    output_pcb = output_pcb.resolve()
+
+    print(f"Loading input PCB: {input_pcb}")
+    source_board = pcbnew.LoadBoard(str(input_pcb))
+
+    if config.tolerance_mm is None:
+        tolerance_nm = compute_artwork_tolerance(source_board)
+    else:
+        tolerance_nm = int(config.tolerance_mm * mm)
+
+    if tolerance_nm > 0:
+        print(
+            f"Background artwork extends beyond Edge.Cuts; expanding source extraction tolerance by {tolerance_nm / 1e6:.2f} mm"
+        )
+
+    panel = init_panel(input_pcb, output_pcb, tolerance_nm)
+    seams = detect_seams(panel)
+    if not seams:
+        print("Warning: Fewer than 2 board outlines found. No seams to join.")
+
+    add_mousebite_tabs(panel, seams, config)
+
+    print(f"\nSaving panel to: {output_pcb}")
+    panel.save(reconstructArcs=True)
+
+    validate_panel(output_pcb)
+    cleanup_lockfile(output_pcb)
+    cleanup_lockfile(input_pcb)
 
     print("Done! Panelization completed successfully.")
 
@@ -305,15 +350,19 @@ def main() -> None:
         else input_pcb.parent / f"{input_pcb.stem}_panel{input_pcb.suffix}"
     )
 
-    panelize(
-        input_pcb=input_pcb,
-        output_pcb=output_pcb,
+    config = PanelConfig(
         tab_width_mm=args.tab_width,
         tab_y_positions_mm=args.tab_positions,
         hole_diameter_mm=args.hole_diameter,
         hole_spacing_mm=args.hole_spacing,
         mousebite_offset_mm=args.mousebite_offset,
         tolerance_mm=args.tolerance,
+    )
+
+    panelize(
+        input_pcb=input_pcb,
+        output_pcb=output_pcb,
+        config=config,
     )
 
 
