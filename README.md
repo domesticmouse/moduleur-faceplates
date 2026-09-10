@@ -117,8 +117,21 @@ uv run --python /Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framewo
 │   ├── VCO.kicad_pcb
 │   ├── VCO_panel.kicad_pcb
 │   └── jlcpcb/
+├── LICENSE
 └── README.md
 ```
+
+---
+
+## License
+
+This project incorporates assets from the [Moduleur](https://github.com/shmoergh/moduleur) project. As such, the hardware follows the same license as that project. The 
+
+
+- **Hardware & Faceplate Designs:** [Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/)
+- **Software & Tooling:** [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0)
+
+See [LICENSE](LICENSE) for full terms.
 
 ---
 
