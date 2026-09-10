@@ -7,14 +7,14 @@
 # ]
 # ///
 """
-KiKit Scripted Panelization for Multi-Board VCO Faceplate.
+KiKit Scripted Panelization for Multi-Board Eurorack Faceplates.
 
 Reads a KiCad PCB layout containing multiple side-by-side boards (such as 4x 12HP
 Eurorack faceplates sharing common graphics) and creates a unified manufacturing panel
 joined by mousebite break-off tabs between adjacent boards, without outer rails.
 
 Usage:
-    uv run --python /Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/3.9/bin/python3 panelize.py
+    uv run --python /Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/3.9/bin/python3 .agents/skills/panelize/scripts/panelize.py -i VCA/VCA.kicad_pcb
 """
 
 from __future__ import annotations
@@ -208,6 +208,12 @@ def panelize(
     print(f"  Substrate is single unified piece: {is_single}")
     print(f"  Panel dimensions: {bounds[2] - bounds[0]:.2f} mm x {bounds[3] - bounds[1]:.2f} mm")
     print(f"  Mousebite drill holes (footprints): {num_fps}")
+
+    # Remove any transient lock file left behind by pcbnew.LoadBoard
+    lck_file = output_pcb.parent / f"~{output_pcb.stem}.kicad_pro.lck"
+    if lck_file.is_file():
+        lck_file.unlink(missing_ok=True)
+
     print("Done! Panelization completed successfully.")
 
 
@@ -226,8 +232,8 @@ def main() -> None:
         "--output",
         "-o",
         type=Path,
-        default=Path("VCO/VCO_panel.kicad_pcb"),
-        help="Path for generated panel PCB (default: VCO/VCO_panel.kicad_pcb)",
+        default=None,
+        help="Path for generated panel PCB (default: <input_dir>/<input_stem>_panel.kicad_pcb)",
     )
     parser.add_argument(
         "--tab-width",
@@ -268,9 +274,16 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+    input_pcb: Path = args.input
+    output_pcb: Path = (
+        args.output
+        if args.output is not None
+        else input_pcb.parent / f"{input_pcb.stem}_panel{input_pcb.suffix}"
+    )
+
     panelize(
-        input_pcb=args.input,
-        output_pcb=args.output,
+        input_pcb=input_pcb,
+        output_pcb=output_pcb,
         tab_width_mm=args.tab_width,
         tab_y_positions_mm=args.tab_positions,
         hole_diameter_mm=args.hole_diameter,
