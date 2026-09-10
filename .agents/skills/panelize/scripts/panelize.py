@@ -23,6 +23,25 @@ import argparse
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pcbnew
+    from kikit import panelize as kp
+    from kikit.common import Layer, collectEdges
+    from kikit.substrate import Substrate
+    from kikit.units import mm
+    from shapely.geometry import LineString, box
+
+# Module-level placeholders for lazily imported KiCad and geometry libraries
+pcbnew = None
+kp = None
+Layer = None
+collectEdges = None
+Substrate = None
+mm = None
+LineString = None
+box = None
 
 
 def check_environment() -> None:
@@ -64,20 +83,36 @@ def check_environment() -> None:
         "Error: 'pcbnew' module could not be loaded in the current Python environment.\n\n"
         "On macOS, KiCad's pcbnew C++ module requires Python 3.9 matching KiCad's build.\n"
         "Please run this script with uv specifying KiCad's Python interpreter:\n\n"
-        f"    uv run --python {kicad_python} panelize.py\n\n"
+        f"    uv run --python {kicad_python} {sys.argv[0]}\n\n"
     )
     sys.exit(1)
 
 
-# Ensure KiCad environment is ready before importing pcbnew or kikit
-check_environment()
+def ensure_environment() -> None:
+    """Ensure KiCad and KiKit dependencies are imported and available globally."""
+    global pcbnew, kp, Layer, collectEdges, Substrate, mm, LineString, box
+    if pcbnew is not None:
+        return
 
-import pcbnew
-from kikit import panelize as kp
-from kikit.common import Layer, collectEdges
-from kikit.substrate import Substrate
-from kikit.units import mm
-from shapely.geometry import LineString, box
+    check_environment()
+
+    import pcbnew as _pcbnew
+    from kikit import panelize as _kp
+    from kikit.common import Layer as _Layer
+    from kikit.common import collectEdges as _collectEdges
+    from kikit.substrate import Substrate as _Substrate
+    from kikit.units import mm as _mm
+    from shapely.geometry import LineString as _LineString
+    from shapely.geometry import box as _box
+
+    pcbnew = _pcbnew
+    kp = _kp
+    Layer = _Layer
+    collectEdges = _collectEdges
+    Substrate = _Substrate
+    mm = _mm
+    LineString = _LineString
+    box = _box
 
 
 @dataclass
@@ -248,6 +283,7 @@ def panelize(
     config: PanelConfig | None = None,
 ) -> None:
     """Panelize a multi-board PCB layout into a unified panel joined by mousebites."""
+    ensure_environment()
     config = config or PanelConfig()
     input_pcb = input_pcb.resolve()
     output_pcb = output_pcb.resolve()
@@ -282,62 +318,118 @@ def panelize(
     print("Done! Panelization completed successfully.")
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
+    """Build and configure the command-line argument parser."""
+    description = """
+KiKit Scripted Panelization for Multi-Board Eurorack Faceplates.
+
+Panelizes a KiCad PCB layout containing multiple adjacent Eurorack faceplates
+(such as 4x 12HP faceplates sharing continuous graphics) into a unified manufacturing
+panel joined by break-off mousebite tabs across vertical seams, without outer rails.
+
+Features:
+  - Preserves continuous artwork and silkscreen extending beyond Edge.Cuts.
+  - Automatically discovers sub-board outlines and seam gaps along the X-axis.
+  - Generates structural tabs bridging inter-board seams at specified Y heights.
+  - Perforates tab edges with recessed mousebites so break-off burrs do not protrude.
+  - Validates that the resulting panel substrate is a single contiguous piece.
+"""
+
+    epilog = """
+examples:
+  # Panelize a layout with default settings (auto-derived output <dir>/<stem>_panel.kicad_pcb):
+  uv run --python /Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/3.9/bin/python3 \\
+      .agents/skills/panelize/scripts/panelize.py -i VCA/VCA.kicad_pcb
+
+  # Specify an explicit output PCB path:
+  uv run --python /Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/3.9/bin/python3 \\
+      .agents/skills/panelize/scripts/panelize.py -i VCO/VCO.kicad_pcb -o panels/VCO_panel.kicad_pcb
+
+  # Customize tab width and vertical placement (Y coordinates in mm from top edge):
+  uv run --python /Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/3.9/bin/python3 \\
+      .agents/skills/panelize/scripts/panelize.py -i VCA/VCA.kicad_pcb --tab-width 6.0 --tab-positions 30.0 60.0 90.0
+
+  # Fine-tune mousebite drill hole diameter, hole pitch, and recess offset:
+  uv run --python /Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/3.9/bin/python3 \\
+      .agents/skills/panelize/scripts/panelize.py -i VCO/VCO.kicad_pcb --hole-diameter 0.6 --hole-spacing 0.8 --mousebite-offset 0.3
+
+notes:
+  - Running panelization requires KiCad's 'pcbnew' Python module and 'kikit'.
+    On macOS, execute using KiCad's bundled Python 3.9 via 'uv' as shown above.
+  - Running with -h / --help works in any standard Python environment without
+    requiring KiCad or KiKit to be installed.
+"""
+
     parser = argparse.ArgumentParser(
-        description="Panelize multi-board Eurorack faceplates into a 1x4 panel with mousebites using KiKit."
+        prog="panelize.py",
+        description=description.strip(),
+        epilog=epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "--input",
         "-i",
+        "--input",
         type=Path,
         default=Path("VCO/VCO.kicad_pcb"),
-        help="Path to source KiCad PCB layout (default: VCO/VCO.kicad_pcb)",
+        metavar="PATH",
+        help="Path to source KiCad PCB layout (default: %(default)s)",
     )
     parser.add_argument(
-        "--output",
         "-o",
+        "--output",
         type=Path,
         default=None,
-        help="Path for generated panel PCB (default: <input_dir>/<input_stem>_panel.kicad_pcb)",
+        metavar="PATH",
+        help="Destination path for generated panel PCB layout (default: <input_dir>/<input_stem>_panel.kicad_pcb)",
     )
     parser.add_argument(
         "--tab-width",
         type=float,
         default=5.0,
-        help="Width of each mousebite tab in mm (default: 5.0)",
+        metavar="MM",
+        help="Width of each mousebite break-off tab in mm (default: %(default)s mm)",
     )
     parser.add_argument(
         "--tab-positions",
         type=float,
         nargs="+",
         default=[34.0, 62.5, 92.0],
-        help="Y-coordinates (in mm from top edge) for tabs (default: 34.0 62.5 92.0)",
+        metavar="Y_MM",
+        help="One or more Y-coordinates in mm from board top edge for tab placement (default: %(default)s)",
     )
     parser.add_argument(
         "--hole-diameter",
         type=float,
         default=0.5,
-        help="Mousebite drill hole diameter in mm (default: 0.5)",
+        metavar="MM",
+        help="Drill diameter for mousebite perforation holes in mm (default: %(default)s mm)",
     )
     parser.add_argument(
         "--hole-spacing",
         type=float,
         default=0.75,
-        help="Mousebite hole center-to-center spacing in mm (default: 0.75)",
+        metavar="MM",
+        help="Center-to-center pitch between mousebite drill holes in mm (default: %(default)s mm)",
     )
     parser.add_argument(
         "--mousebite-offset",
         type=float,
         default=0.25,
-        help="Mousebite offset into tab in mm (default: 0.25)",
+        metavar="MM",
+        help="Inset offset of mousebites into tab material in mm to recess breakout burrs (default: %(default)s mm)",
     )
     parser.add_argument(
         "--tolerance",
         type=float,
         default=None,
-        help="Source extraction tolerance in mm (default: auto-detected from artwork bounds)",
+        metavar="MM",
+        help="Source extraction bounding box tolerance buffer in mm (default: auto-detected from artwork bounds)",
     )
+    return parser
 
+
+def main() -> None:
+    parser = build_parser()
     args = parser.parse_args()
     input_pcb: Path = args.input
     output_pcb: Path = (
