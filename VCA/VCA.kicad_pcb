@@ -14822,6 +14822,50 @@
 		(layer "Edge.Cuts")
 		(uuid "439295a7-4257-4819-a5e8-b00bc6f345dc")
 	)
+	(gr_text "https://github.com/domesticmouse/moduleur-faceplates"
+		(at 28.67 38.42 90)
+		(layer "B.SilkS")
+		(uuid "99e2943b-ae74-452e-8dfc-77f263b59dc5")
+		(effects
+			(font
+				(size 2 2)
+			)
+			(justify left bottom mirror)
+		)
+	)
+	(gr_text "https://github.com/domesticmouse/moduleur-faceplates"
+		(at 92.75 38.42 90)
+		(layer "B.SilkS")
+		(uuid "b320f53c-1540-4908-ac72-bb91a7af88d7")
+		(effects
+			(font
+				(size 2 2)
+			)
+			(justify left bottom mirror)
+		)
+	)
+	(gr_text "https://github.com/domesticmouse/moduleur-faceplates"
+		(at 156.56 38.42 90)
+		(layer "B.SilkS")
+		(uuid "2fe89381-8d3d-47b4-9d6e-a70a81627872")
+		(effects
+			(font
+				(size 2 2)
+			)
+			(justify left bottom mirror)
+		)
+	)
+	(gr_text "https://github.com/domesticmouse/moduleur-faceplates"
+		(at 221.17 38.42 90)
+		(layer "B.SilkS")
+		(uuid "b9d5db95-f85c-422c-81e6-e09ccc6a2f34")
+		(effects
+			(font
+				(size 2 2)
+			)
+			(justify left bottom mirror)
+		)
+	)
 	(group ""
 		(uuid "191210ac-2290-4524-baf4-7d9806a5aaa8")
 		(members "015eb07c-5d64-46e3-953c-20f085fd42c9" "059ebfd9-3046-41fe-86ca-75f3d60100c9"
