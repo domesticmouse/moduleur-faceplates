@@ -20,15 +20,15 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-import sys
 
 
 def check_environment() -> None:
     """Ensure pcbnew can be imported, locating KiCad's bundled module if needed."""
     try:
-        import pcbnew  # noqa: F401
+        import pcbnew
 
         return
     except ImportError:
@@ -72,12 +72,12 @@ def check_environment() -> None:
 # Ensure KiCad environment is ready before importing pcbnew or kikit
 check_environment()
 
-import pcbnew  # noqa: E402
-from kikit import panelize as kp  # noqa: E402
-from kikit.common import Layer, collectEdges  # noqa: E402
-from kikit.substrate import Substrate  # noqa: E402
-from kikit.units import mm  # noqa: E402
-from shapely.geometry import LineString, box  # noqa: E402
+import pcbnew
+from kikit import panelize as kp
+from kikit.common import Layer, collectEdges
+from kikit.substrate import Substrate
+from kikit.units import mm
+from shapely.geometry import LineString, box
 
 
 @dataclass
@@ -85,9 +85,7 @@ class PanelConfig:
     """Configuration options for panel generation and mousebites."""
 
     tab_width_mm: float = 5.0
-    tab_y_positions_mm: list[float] = field(
-        default_factory=lambda: [34.0, 62.5, 92.0]
-    )
+    tab_y_positions_mm: list[float] = field(default_factory=lambda: [34.0, 62.5, 92.0])
     hole_diameter_mm: float = 0.5
     hole_spacing_mm: float = 0.75
     mousebite_offset_mm: float = 0.25
@@ -106,12 +104,10 @@ def compute_artwork_tolerance(
     min_x = min(d.GetBoundingBox().GetX() for d in all_drawings)
     min_y = min(d.GetBoundingBox().GetY() for d in all_drawings)
     max_x = max(
-        d.GetBoundingBox().GetX() + d.GetBoundingBox().GetWidth()
-        for d in all_drawings
+        d.GetBoundingBox().GetX() + d.GetBoundingBox().GetWidth() for d in all_drawings
     )
     max_y = max(
-        d.GetBoundingBox().GetY() + d.GetBoundingBox().GetHeight()
-        for d in all_drawings
+        d.GetBoundingBox().GetY() + d.GetBoundingBox().GetHeight() for d in all_drawings
     )
 
     overflow = max(
